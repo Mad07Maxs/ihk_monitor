@@ -1,5 +1,5 @@
 {
-  "mode": "event",
+  "mode": "general",
   "interval": 10,
   "pool": [
     "1794990174374_clipfly_2026-10-28_15-39-06.jpg",
