@@ -1,8 +1,6 @@
 {
   "mode": "general",
   "interval": 10,
-  "pool": [
-    "1794990303857_DSC_4620.jpg"
-  ],
-  "eventImage": "1794990303857_DSC_4620.jpg"
+  "pool": [],
+  "eventImage": ""
 }
