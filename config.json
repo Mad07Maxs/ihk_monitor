@@ -1,5 +1,5 @@
 {
-  "mode": "general",
+  "mode": "event",
   "interval": 20,
   "pool": [
     "1794991182822_1.jpg",
@@ -7,5 +7,5 @@
     "1794991187635_4.jpg",
     "1794991189836_5.jpg"
   ],
-  "eventImage": ""
+  "eventImage": "1794991187635_4.jpg"
 }
