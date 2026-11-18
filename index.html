@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor Steuerung - Admin</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; background: #f4f4f9; color: #333; }
+        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+        h1, h2 { margin-top: 0; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .img-card { border: 2px solid #ddd; border-radius: 6px; padding: 0.5rem; text-align: center; background: #fafafa; position: relative; }
+        .img-card img { width: 100%; height: 120px; object-fit: cover; border-radius: 4px; }
+        .img-card.selected-event { border-color: #e63946; background: #fff0f1; }
+        .controls { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; font-size: 0.85rem; }
+        button { background: #0066cc; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0052a3; }
+        button.danger { background: #d9534f; padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-top: 0.3rem; }
+        button.success { background: #28a745; font-size: 1.1rem; width: 100%; padding: 1rem; }
+        input[type="text"], input[type="password"], input[type="number"] { padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; }
+        .row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+        .row > div { flex: 1; }
+        #status { padding: 1rem; border-radius: 5px; display: none; margin-bottom: 1rem; font-weight: bold; }
+        .status-ok { background: #d4edda; color: #155724; }
+        .status-err { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <h1>Monitor Steuerung</h1>
+    <div id="status"></div>
+
+    <!-- GitHub Verbindung -->
+    <div class="card">
+        <h2>1. GitHub Verbindung</h2>
+        <div class="row">
+            <div><label>GitHub Benutzername</label><input type="text" id="gh-owner" placeholder="z.B. DeinName"></div>
+            <div><label>Repository Name</label><input type="text" id="gh-repo" placeholder="z.B. shop-display"></div>
+            <div><label>GitHub Token (PAT)</label><input type="password" id="gh-token" placeholder="github_pat_..."></div>
+        </div>
+        <button onclick="saveAuthAndLoad()">Verbinden & Daten laden</button>
+    </div>
+
+    <!-- Modus Einstellungen -->
+    <div class="card">
+        <h2>2. Anzeige-Modus</h2>
+        <div class="row">
+            <div>
+                <label><strong>Aktiver Modus:</strong></label><br><br>
+                <label><input type="radio" name="mode" value="general" checked onchange="renderGallery()"> Allgemeiner Modus (Bilder-Pool)</label><br>
+                <label><input type="radio" name="mode" value="event" onchange="renderGallery()"> Veranstaltungs-Modus (Einzelbild)</label>
+            </div>
+            <div>
+                <label><strong>Wechsel-Intervall (Sekunden):</strong></label>
+                <input type="number" id="interval" value="10" min="2">
+            </div>
+        </div>
+    </div>
+
+    <!-- Bilder Upload & Pool -->
+    <div class="card">
+        <h2>3. Bilder verwalten</h2>
+        <input type="file" id="file-upload" accept="image/*" multiple>
+        <button onclick="uploadImages()">Bilder hochladen</button>
+        
+        <div class="grid" id="gallery"></div>
+    </div>
+
+    <button class="success" onclick="saveConfig()">Änderungen live schalten (Speichern)</button>
+
+    <script>
+        let config = {
+            mode: 'general',
+            interval: 10,
+            pool: [],
+            eventImage: ''
+        };
+        let repoImages = [];
+        let configSha = null;
+
+        // Lade gespeicherte Zugangsdaten beim Start
+        window.onload = () => {
+            document.getElementById('gh-owner').value = localStorage.getItem('gh_owner') || '';
+            document.getElementById('gh-repo').value = localStorage.getItem('gh_repo') || '';
+            document.getElementById('gh-token').value = localStorage.getItem('gh_token') || '';
+            if (document.getElementById('gh-token').value) loadData();
+        };
+
+        function showStatus(msg, isError = false) {
+            const el = document.getElementById('status');
+            el.textContent = msg;
+            el.className = isError ? 'status-err' : 'status-ok';
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+
+        function getHeaders() {
+            return {
+                'Authorization': `Bearer ${document.getElementById('gh-token').value}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            };
+        }
+
+        function getApiBase() {
+            const owner = document.getElementById('gh-owner').value.trim();
+            const repo = document.getElementById('gh-repo').value.trim();
+            return `https://api.github.com/repos/${owner}/${repo}/contents`;
+        }
+
+        function saveAuthAndLoad() {
+            localStorage.setItem('gh_owner', document.getElementById('gh-owner').value.trim());
+            localStorage.setItem('gh_repo', document.getElementById('gh-repo').value.trim());
+            localStorage.setItem('gh_token', document.getElementById('gh-token').value.trim());
+            loadData();
+        }
+
+        async function loadData() {
+            try {
+                // 1. Config laden
+                const cfgRes = await fetch(`${getApiBase()}/config.json?t=${Date.now()}`, { headers: getHeaders() });
+                if (cfgRes.ok) {
+                    const cfgData = await cfgRes.json();
+                    configSha = cfgData.sha;
+                    config = JSON.parse(decodeURIComponent(escape(atob(cfgData.content))));
+                    
+                    document.querySelector(`input[name="mode"][value="${config.mode}"]`).checked = true;
+                    document.getElementById('interval').value = config.interval || 10;
+                }
+
+                // 2. Bilder aus Ordner /images laden
+                const imgRes = await fetch(`${getApiBase()}/images?t=${Date.now()}`, { headers: getHeaders() });
+                if (imgRes.ok) {
+                    const files = await imgRes.json();
+                    repoImages = files.filter(f => f.type === 'file' && !f.name.startsWith('.'));
+                }
+                renderGallery();
+                showStatus('Daten erfolgreich geladen.');
+            } catch (e) {
+                showStatus('Fehler beim Laden. Prüfe Token und Repository-Daten.', true);
+            }
+        }
+
+        function renderGallery() {
+            const gallery = document.getElementById('gallery');
+            const currentMode = document.querySelector('input[name="mode"]:checked').value;
+            gallery.innerHTML = '';
+
+            repoImages.forEach(img => {
+                const isPooled = config.pool.includes(img.name);
+                const isEvent = config.eventImage === img.name;
+
+                const card = document.createElement('div');
+                card.className = `img-card ${currentMode === 'event' && isEvent ? 'selected-event' : ''}`;
+                
+                card.innerHTML = `
+                    <img src="${img.download_url}" alt="${img.name}">
+                    <div style="font-size:0.75rem; word-break:break-all; margin-top:4px;">${img.name}</div>
+                    <div class="controls">
+                        <label><input type="checkbox" ${isPooled ? 'checked' : ''} onchange="togglePool('${img.name}', this.checked)"> Im Pool anzeigen</label>
+                        <label><input type="radio" name="event_img" ${isEvent ? 'checked' : ''} onchange="setEventImage('${img.name}')"> Veranstaltungs-Bild</label>
+                        <button class="danger" onclick="deleteImage('${img.name}', '${img.sha}')">Löschen</button>
+                    </div>
+                `;
+                gallery.appendChild(card);
+            });
+        }
+
+        function togglePool(filename, checked) {
+            if (checked && !config.pool.includes(filename)) config.pool.push(filename);
+            if (!checked) config.pool = config.pool.filter(f => f !== filename);
+        }
+
+        function setEventImage(filename) {
+            config.eventImage = filename;
+            renderGallery();
+        }
+
+        async function uploadImages() {
+            const files = document.getElementById('file-upload').files;
+            if (!files.length) return;
+            showStatus('Lade Bilder hoch...');
+
+            for (let file of files) {
+                const base64 = await toBase64(file);
+                const cleanName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '');
+                
+                await fetch(`${getApiBase()}/images/${cleanName}`, {
+                    method: 'PUT',
+                    headers: getHeaders(),
+                    body: JSON.stringify({
+                        message: `Upload ${cleanName}`,
+                        content: base64.split(',')[1]
+                    })
+                });
+                config.pool.push(cleanName);
+            }
+            document.getElementById('file-upload').value = '';
+            await saveConfig();
+            await loadData();
+        }
+
+        async function deleteImage(filename, sha) {
+            if (!confirm(`Bild "${filename}" wirklich löschen?`)) return;
+            await fetch(`${getApiBase()}/images/${filename}`, {
+                method: 'DELETE',
+                headers: getHeaders(),
+                body: JSON.stringify({ message: `Delete ${filename}`, sha: sha })
+            });
+            config.pool = config.pool.filter(f => f !== filename);
+            if (config.eventImage === filename) config.eventImage = '';
+            await saveConfig();
+            await loadData();
+        }
+
+        async function saveConfig() {
+            config.mode = document.querySelector('input[name="mode"]:checked').value;
+            config.interval = parseInt(document.getElementById('interval').value) || 10;
+
+            const contentEncoded = btoa(unescape(encodeURIComponent(JSON.stringify(config, null, 2))));
+            const body = {
+                message: 'Update display config',
+                content: contentEncoded
+            };
+            if (configSha) body.sha = configSha;
+
+            const res = await fetch(`${getApiBase()}/config.json`, {
+                method: 'PUT',
+                headers: getHeaders(),
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                configSha = data.content.sha;
+                showStatus('Gespeichert! Der Monitor übernimmt die Änderungen in Kürze.');
+            } else {
+                showStatus('Fehler beim Speichern der Konfiguration.', true);
+            }
+        }
+
+        const toBase64 = file => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+    </script>
+</body>
+</html>
