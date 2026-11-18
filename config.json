@@ -1,9 +1,9 @@
 {
-  "mode": "general",
+  "mode": "event",
   "interval": 10,
   "pool": [
     "1794990174374_clipfly_2026-10-28_15-39-06.jpg",
     "1794990303857_DSC_4620.jpg"
   ],
-  "eventImage": ""
+  "eventImage": "1794990303857_DSC_4620.jpg"
 }
