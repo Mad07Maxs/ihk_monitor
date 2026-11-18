@@ -10,28 +10,61 @@
             height: 100%;
             background-color: #000;
             overflow: hidden;
-            cursor: none; /* Versteckt den Mauszeiger */
+            cursor: none;
+        }
+        
+        /* Container für einen kompletten Slide (Hintergrund + Vordergrund) */
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
             display: flex;
             align-items: center;
             justify-content: center;
         }
-        img {
-            position: absolute;
-            width: 100vw;
-            height: 100vh;
-            object-fit: contain; /* Passt das Bild ohne Verzerrung optimal ein. Für Randlos-Zoom 'cover' nutzen */
-            opacity: 0;
-            transition: opacity 1s ease-in-out;
-        }
-        img.active {
+        .slide.active {
             opacity: 1;
+        }
+
+        /* Verschwommener Hintergrund */
+        .bg-blur {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: blur(35px) brightness(0.6); /* Weichzeichner + leicht abgedunkelt für besseren Kontrast */
+            transform: scale(1.15); /* Verhindert weiße/transparente Ränder durch den Blur-Effekt */
+            z-index: 1;
+        }
+
+        /* Scharfes Hauptbild im Vordergrund */
+        .fg-main {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            z-index: 2;
+            filter: drop-shadow(0 0 25px rgba(0, 0, 0, 0.7)); /* Dezenter Schatten hebt das Hauptbild ab */
         }
     </style>
 </head>
 <body>
 
-    <img id="slide1" class="active" src="">
-    <img id="slide2" src="">
+    <div id="slide1" class="slide active">
+        <img class="bg-blur" src="">
+        <img class="fg-main" src="">
+    </div>
+
+    <div id="slide2" class="slide">
+        <img class="bg-blur" src="">
+        <img class="fg-main" src="">
+    </div>
 
     <script>
         let currentConfig = null;
@@ -42,12 +75,10 @@
         // Prüft alle 15 Sekunden auf neue Einstellungen in der config.json
         async function fetchConfig() {
             try {
-                // Timestamp verhindert Browser-Caching
                 const response = await fetch(`config.json?t=${Date.now()}`);
                 if (!response.ok) return;
                 const newConfig = await response.json();
 
-                // Nur neu starten, wenn sich tatsächlich etwas geändert hat
                 if (JSON.stringify(newConfig) !== JSON.stringify(currentConfig)) {
                     currentConfig = newConfig;
                     currentIndex = 0;
@@ -61,22 +92,29 @@
         function showImage(filename) {
             if (!filename) return;
             const nextSlideNum = activeSlide === 1 ? 2 : 1;
-            const nextImg = document.getElementById(`slide${nextSlideNum}`);
-            const currImg = document.getElementById(`slide${activeSlide}`);
+            const nextSlide = document.getElementById(`slide${nextSlideNum}`);
+            const currSlide = document.getElementById(`slide${activeSlide}`);
 
-            nextImg.onload = () => {
-                currImg.classList.remove('active');
-                nextImg.classList.add('active');
+            const nextBg = nextSlide.querySelector('.bg-blur');
+            const nextFg = nextSlide.querySelector('.fg-main');
+
+            // Wenn das Hauptbild fertig geladen ist, beide Ebenen gleichzeitig einblenden
+            nextFg.onload = () => {
+                currSlide.classList.remove('active');
+                nextSlide.classList.add('active');
                 activeSlide = nextSlideNum;
             };
-            nextImg.src = `images/${filename}`;
+
+            const imgSrc = `images/${filename}`;
+            nextBg.src = imgSrc;
+            nextFg.src = imgSrc;
         }
 
         function restartSlideshow() {
             if (slideTimer) clearInterval(slideTimer);
             if (!currentConfig) return;
 
-            // Modus 1: Veranstaltungs-Modus (nur 1 festes Bild)
+            // Modus 1: Veranstaltungs-Modus
             if (currentConfig.mode === 'event') {
                 if (currentConfig.eventImage) {
                     showImage(currentConfig.eventImage);
@@ -84,7 +122,7 @@
                 return;
             }
 
-            // Modus 2: Allgemeiner Modus (Bilder-Pool durchwechseln)
+            // Modus 2: Allgemeiner Modus
             if (currentConfig.mode === 'general' && currentConfig.pool.length > 0) {
                 showImage(currentConfig.pool[0]);
                 
@@ -98,7 +136,6 @@
             }
         }
 
-        // Initialer Start & regelmäßiger Check
         fetchConfig();
         setInterval(fetchConfig, 15000);
     </script>
