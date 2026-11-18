@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Monitor Display</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+            cursor: none; /* Versteckt den Mauszeiger */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        img {
+            position: absolute;
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain; /* Passt das Bild ohne Verzerrung optimal ein. Für Randlos-Zoom 'cover' nutzen */
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+        img.active {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <img id="slide1" class="active" src="">
+    <img id="slide2" src="">
+
+    <script>
+        let currentConfig = null;
+        let currentIndex = 0;
+        let activeSlide = 1;
+        let slideTimer = null;
+
+        // Prüft alle 15 Sekunden auf neue Einstellungen in der config.json
+        async function fetchConfig() {
+            try {
+                // Timestamp verhindert Browser-Caching
+                const response = await fetch(`config.json?t=${Date.now()}`);
+                if (!response.ok) return;
+                const newConfig = await response.json();
+
+                // Nur neu starten, wenn sich tatsächlich etwas geändert hat
+                if (JSON.stringify(newConfig) !== JSON.stringify(currentConfig)) {
+                    currentConfig = newConfig;
+                    currentIndex = 0;
+                    restartSlideshow();
+                }
+            } catch (err) {
+                console.error("Verbindungsfehler beim Abrufen der Config:", err);
+            }
+        }
+
+        function showImage(filename) {
+            if (!filename) return;
+            const nextSlideNum = activeSlide === 1 ? 2 : 1;
+            const nextImg = document.getElementById(`slide${nextSlideNum}`);
+            const currImg = document.getElementById(`slide${activeSlide}`);
+
+            nextImg.onload = () => {
+                currImg.classList.remove('active');
+                nextImg.classList.add('active');
+                activeSlide = nextSlideNum;
+            };
+            nextImg.src = `images/${filename}`;
+        }
+
+        function restartSlideshow() {
+            if (slideTimer) clearInterval(slideTimer);
+            if (!currentConfig) return;
+
+            // Modus 1: Veranstaltungs-Modus (nur 1 festes Bild)
+            if (currentConfig.mode === 'event') {
+                if (currentConfig.eventImage) {
+                    showImage(currentConfig.eventImage);
+                }
+                return;
+            }
+
+            // Modus 2: Allgemeiner Modus (Bilder-Pool durchwechseln)
+            if (currentConfig.mode === 'general' && currentConfig.pool.length > 0) {
+                showImage(currentConfig.pool[0]);
+                
+                if (currentConfig.pool.length > 1) {
+                    const intervalMs = (currentConfig.interval || 10) * 1000;
+                    slideTimer = setInterval(() => {
+                        currentIndex = (currentIndex + 1) % currentConfig.pool.length;
+                        showImage(currentConfig.pool[currentIndex]);
+                    }, intervalMs);
+                }
+            }
+        }
+
+        // Initialer Start & regelmäßiger Check
+        fetchConfig();
+        setInterval(fetchConfig, 15000);
+    </script>
+</body>
+</html>
