@@ -1,5 +1,5 @@
 {
-  "mode": "general",
+  "mode": "event",
   "interval": 20,
   "pool": [
     "1794991182822_1.jpg",
@@ -8,5 +8,5 @@
     "1794991189836_5.jpg",
     "1795172102812_NJE_2027_Einladungsfolie.png"
   ],
-  "eventImage": ""
+  "eventImage": "1795172102812_NJE_2027_Einladungsfolie.png"
 }
